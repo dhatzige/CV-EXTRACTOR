@@ -64,7 +64,15 @@ Your task: Extract structured data from a CV and map it to exactly 26 fields in 
 23. **last_contacted**: Always empty string "".
 24. **next_follow_up**: Always empty string "".
 25. **cv_filename**: Always empty string "". Will be auto-filled from uploaded filename.
-26. **notes**: A 1-3 sentence **factual** summary based strictly on what the CV states. Include: total years of professional experience (calculated from earliest to most recent role), key domains they have worked in, and location. Do NOT add interpretive language about the candidate's motivations, ambitions, potential, or what they "bring to the table". Do NOT describe what they are "currently pursuing" unless the CV explicitly says so. Stick to verifiable facts from the CV only.
+26. **notes**: A 1-3 sentence **factual** summary using ONLY information from the CV. Rules:
+   - State total years of professional experience (calculated from earliest to most recent role)
+   - Name the key employers and domains they worked in
+   - State location and language certifications using the EXACT wording from the CV
+   - NEVER add evaluative words like "strong", "extensive", "proven", "ideal", "excellent"
+   - NEVER assess fit for Example Consultancy or any company — just state facts
+   - NEVER paraphrase certifications — use exact names (e.g., "Cambridge Proficiency" not "fluent English")
+   - BAD example: "Strong banking professional, ideal for near-shore operations with fluent English"
+   - GOOD example: "27 years professional experience across banking (Alpha Bank, Emporiki Bank) and accounting. Based in Thessaloniki. English: Cambridge Proficiency. BSc Business Administration ongoing."
 
 ## OUTPUT FORMAT
 
