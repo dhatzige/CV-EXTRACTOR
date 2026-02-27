@@ -19,7 +19,7 @@ Your task: Extract structured data from a CV and map it to exactly 26 fields in 
 ### PERSONAL DETAILS
 1. **resource_id**: Always empty string "". Will be auto-assigned.
 2. **full_name**: Full name as written on the CV. Transliterate Greek names to Latin characters if the CV is in Greek (e.g., "Σουλτάνα Ζαριφόγλου" → "Soultana Zarifoglou"). Always use the Latin/English version if both are present.
-3. **job_title_role**: The most recent job title exactly as written on the CV. If the candidate has held multiple roles at the same company, use the most senior one listed. Keep it concise — max 60 characters. Do NOT create new titles that don't appear on the CV.
+3. **job_title_role**: The most representative current or most recent job title. For candidates with multiple similar roles, synthesise into a concise label (e.g., "Senior Murex Datamart Developer / Business Analyst"). Use your judgement as a recruiter — the title should help someone quickly understand what this person does. Max 60 characters.
 
 ### CONTACT & LOCATION
 4. **email**: Email address exactly as found on the CV. Empty string if not found.
