@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CV Parser
 
-## Getting Started
+A CV extraction tool powered by Claude API that parses uploaded CVs into structured, editable data.
 
-First, run the development server:
+**Live:** [cv-extractor-zeta.vercel.app](https://cv-extractor-zeta.vercel.app/)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## What it does
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Upload a CV (PDF or image) and the tool extracts structured fields using Claude's vision and text capabilities:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Personal details, work experience, education, skills
+- Field-level inline editing after extraction
+- Export to Excel (.xlsx) or TSV
+- Copy individual fields or full structured output
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Stack
 
-## Learn More
+- **Framework:** Next.js 15 (App Router)
+- **AI:** Anthropic Claude API (claude-sonnet-4-20250514)
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS
+- **Auth:** Simple token-based authentication
+- **Deployment:** Vercel
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. User uploads a CV (PDF or image)
+2. The file is sent to Claude API with a structured extraction prompt
+3. Claude returns parsed data matching a predefined schema
+4. User can edit any field inline before exporting
+5. Export as Excel, TSV, or copy to clipboard
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Built with
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built using Claude Code by someone with no formal programming background, as a production tool for [Example Consultancy](https://www.example.com/).
