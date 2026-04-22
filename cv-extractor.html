@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CV Extractor — Local</title>
+<style>
+  :root {
+    --navy: #0b2545;
+    --navy-light: #1a3a6b;
+    --gold: #c8a951;
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --border: #e4e7ec;
+    --text: #111827;
+    --muted: #6b7280;
+    --danger: #b91c1c;
+    --success: #047857;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  header.app {
+    background: var(--navy);
+    color: white;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  header.app .brand { font-weight: 600; letter-spacing: 0.3px; }
+  header.app .brand small { font-weight: 400; opacity: 0.7; margin-left: 8px; }
+  header.app button.link {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  header.app button.link:hover { background: rgba(255,255,255,0.1); }
+
+  main { max-width: 880px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+
+  /* Upload */
+  .drop {
+    border: 2px dashed #c9d1db;
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    background: #fafbfc;
+  }
+  .drop:hover, .drop.dragging {
+    border-color: var(--navy);
+    background: #f0f4fa;
+  }
+  .drop .icon { font-size: 40px; margin-bottom: 12px; }
+  .drop .main-text { font-weight: 600; font-size: 16px; }
+  .drop .sub-text { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  input[type="file"] { display: none; }
+
+  /* Loading */
+  .loading { text-align: center; padding: 60px 20px; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid #e4e7ec;
+    border-top-color: var(--navy);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color: var(--muted); font-size: 13px; }
+
+  /* Error */
+  .error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: var(--danger);
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin-top: 16px;
+    font-size: 13px;
+  }
+
+  /* Sticky bar */
+  .action-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+    margin: -32px -24px 24px;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .action-bar .summary .name { font-weight: 600; }
+  .action-bar .summary .role { color: var(--muted); font-size: 12px; }
+  .action-bar .btns { display: flex; gap: 8px; }
+
+  button.primary, button.secondary, button.ghost {
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button.primary { background: var(--navy); color: white; }
+  button.primary:hover { background: var(--navy-light); }
+  button.secondary { background: white; color: var(--navy); border-color: var(--navy); }
+  button.secondary:hover { background: #f3f6fb; }
+  button.ghost { background: white; color: var(--muted); border-color: #d1d5db; }
+  button.ghost:hover { background: #f9fafb; }
+
+  /* Categories */
+  .category {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .category h3 {
+    margin: 0;
+    padding: 14px 20px;
+    background: #f4f6f9;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .fields { padding: 20px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .fields.single { grid-template-columns: 1fr; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .field input, .field select, .field textarea {
+    font: inherit;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    color: var(--text);
+    width: 100%;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline: none;
+    border-color: var(--navy);
+    box-shadow: 0 0 0 3px rgba(11,37,69,0.1);
+  }
+  .field textarea { min-height: 72px; resize: vertical; font-family: inherit; }
+  .field input[readonly] { background: #f9fafb; color: var(--muted); }
+
+  /* Key prompt */
+  .key-prompt {
+    max-width: 480px;
+    margin: 48px auto;
+    padding: 32px;
+  }
+  .key-prompt h2 { margin: 0 0 6px; color: var(--navy); font-size: 20px; }
+  .key-prompt p { color: var(--muted); margin: 0 0 20px; font-size: 13px; }
+  .key-prompt input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 7px;
+    font: inherit;
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .key-prompt .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+
+  .copied-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--success);
+    color: white;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: toast-in 0.2s ease;
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="brand">CV Extractor <small>· local, no-build</small></div>
+  <div style="display: flex; gap: 8px;">
+    <button class="link" id="resetKeyBtn" title="Change the Anthropic API key stored in this browser">Reset key</button>
+  </div>
+</header>
+
+<main>
+  <!-- API key prompt -->
+  <section id="keyScreen" class="card key-prompt hidden">
+    <h2>Paste your Anthropic API key</h2>
+    <p>Stored only in this browser's localStorage — never in the HTML file, never sent anywhere except api.anthropic.com.</p>
+    <input type="password" id="keyInput" placeholder="sk-ant-api03-…" autocomplete="off" spellcheck="false" />
+    <button class="primary" id="keySubmit" style="width: 100%;">Save and continue</button>
+    <div class="hint">
+      The key stays on this device. To remove it, click "Reset key" in the header.
+      You can also close this file and the key still works next time.
+    </div>
+  </section>
+
+  <!-- Upload -->
+  <section id="uploadScreen" class="card hidden">
+    <div class="drop" id="dropZone">
+      <div class="icon">📄</div>
+      <div class="main-text">Drop a CV, or click to choose</div>
+      <div class="sub-text">PDF or DOCX — text-based (scanned/image PDFs won't work)</div>
+      <input type="file" id="fileInput" accept=".pdf,.docx" />
+    </div>
+    <div id="uploadError" class="error hidden"></div>
+  </section>
+
+  <!-- Loading -->
+  <section id="loadingScreen" class="hidden">
+    <div class="card loading">
+      <div class="spinner"></div>
+      <div id="loadingMsg" class="loading-text">Extracting text…</div>
+    </div>
+  </section>
+
+  <!-- Results -->
+  <section id="resultsScreen" class="hidden">
+    <div class="action-bar">
+      <div class="summary">
+        <div class="name" id="summaryName">Extracted Data</div>
+        <div class="role" id="summaryRole">Review and edit fields below</div>
+      </div>
+      <div class="btns">
+        <button class="primary" id="copyTsvBtn">Copy to Clipboard</button>
+        <button class="secondary" id="downloadXlsxBtn">Download Excel</button>
+        <button class="ghost" id="resetBtn">Upload Another</button>
+      </div>
+    </div>
+    <div id="categoriesContainer"></div>
+  </section>
+</main>
+
+<!-- pdf.js 3.x UMD (works from file:// — no ES module required) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- mammoth.js (DOCX) -->
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.11.0/mammoth.browser.min.js"></script>
+<!-- SheetJS (XLSX export) -->
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+<script>
+  // pdf.js setup — use CDN worker
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    window.__pdfjs = window.pdfjsLib;
+  }
+</script>
+
+<script>
+// ============================================================
+// Schema (ported from lib/schema.ts)
+// ============================================================
+const STATUS_OPTIONS = ["Available", "Engaged", "On Notice", "Unavailable", "On Hold"];
+const RIGHT_TO_WORK_OPTIONS = ["UK Citizen", "Settled Status", "Pre-Settled", "Tier 2 Visa", "Requires Sponsorship", "EU National", "Other"];
+const RATE_FLEXIBILITY_OPTIONS = ["", "Fixed", "Negotiable", "Flexible", "TBC"];
+const SOURCE_OPTIONS = ["LinkedIn", "Referral", "Job Board", "Direct Application", "Network Event", "Returning Resource", "Agency", "CV Upload", "Other"];
+const EXPERIENCE_LEVEL_OPTIONS = ["Analyst", "Consultant", "Senior", "Manager", "Director"];
+
+const COLUMN_ORDER = [
+  "resource_id","full_name","job_title_role","email","phone","location",
+  "right_to_work","status","available_from","day_rate_gbp","rate_flexibility",
+  "subject_matter_knowledge","technical_skills","systems","experience_level",
+  "years_experience","source_referral","source_notes","date_added","interview_notes",
+  "client_fit_tags","contract_history","last_contacted","next_follow_up","cv_filename","notes"
+];
+
+const COLUMN_LABELS = {
+  resource_id: "Resource ID",
+  full_name: "Full Name",
+  job_title_role: "Job Title / Role",
+  email: "Email",
+  phone: "Phone",
+  location: "Location",
+  right_to_work: "Right to Work",
+  status: "Status",
+  available_from: "Available From",
+  day_rate_gbp: "Day Rate (\u00A3)",
+  rate_flexibility: "Rate Flexibility",
+  subject_matter_knowledge: "Subject Matter Knowledge",
+  technical_skills: "Technical Skills",
+  systems: "Systems",
+  experience_level: "Experience Level",
+  years_experience: "Years Experience",
+  source_referral: "Source / Referral",
+  source_notes: "Source Notes",
+  date_added: "Date Added",
+  interview_notes: "Interview Notes",
+  client_fit_tags: "Client Fit Tags",
+  contract_history: "Contract History",
+  last_contacted: "Last Contacted",
+  next_follow_up: "Next Follow-Up",
+  cv_filename: "CV Filename",
+  notes: "Notes"
+};
+
+const CATEGORIES = [
+  { name: "Personal Details", fields: ["resource_id","full_name","job_title_role"] },
+  { name: "Contact & Location", fields: ["email","phone","location","right_to_work"] },
+  { name: "Availability & Rates", fields: ["status","available_from","day_rate_gbp","rate_flexibility"] },
+  { name: "Skills & Experience", fields: ["subject_matter_knowledge","technical_skills","systems","experience_level","years_experience"] },
+  { name: "Sourcing & Assessment", fields: ["source_referral","source_notes","date_added","interview_notes"] },
+  { name: "Client Fit & History", fields: ["client_fit_tags","contract_history"] },
+  { name: "Follow-Up & Admin", fields: ["last_contacted","next_follow_up","cv_filename","notes"] }
+];
+
+const SELECT_FIELDS = {
+  right_to_work: RIGHT_TO_WORK_OPTIONS,
+  status: STATUS_OPTIONS,
+  rate_flexibility: RATE_FLEXIBILITY_OPTIONS,
+  experience_level: EXPERIENCE_LEVEL_OPTIONS,
+  source_referral: SOURCE_OPTIONS
+};
+
+const TEXTAREA_FIELDS = new Set([
+  "subject_matter_knowledge","technical_skills","systems",
+  "client_fit_tags","contract_history","interview_notes","notes"
+]);
+
+// ============================================================
+// Claude system prompt (verbatim from lib/claudePrompt.ts)
+// ============================================================
+const SYSTEM_PROMPT = `You are a CV data extraction specialist for a management consultancy that specialises in financial services transformation (Capital Markets, Banking, Investment Banking) and maintains a Resource Pool of contractors and candidates.
+
+Your task: Extract structured data from a CV and map it to exactly 26 fields in the Resource Pool Tracker. Return ONLY valid JSON matching the schema below. No markdown, no explanation, no preamble.
+
+## CRITICAL RULE — NO ASSUMPTIONS
+
+- ONLY extract information that is **explicitly stated** in the CV text.
+- NEVER infer, assume, or embellish details that are not written.
+- If a field cannot be determined from the CV text, return an empty string "".
+- Do NOT fill gaps with plausible-sounding information — leave them empty.
+- The ONLY permitted inferences are where explicitly noted below (right_to_work, experience_level, years_experience). All other fields must come directly from the CV.
+
+## FIELD DEFINITIONS AND RULES
+
+### PERSONAL DETAILS
+1. **resource_id**: Always empty string "". Will be auto-assigned.
+2. **full_name**: Full name as written on the CV. Transliterate Greek names to Latin characters if the CV is in Greek (e.g., "Σουλτάνα Ζαριφόγλου" → "Soultana Zarifoglou"). Always use the Latin/English version if both are present.
+3. **job_title_role**: The most representative current or most recent job title. For candidates with multiple similar roles, synthesise into a concise label (e.g., "Senior Murex Datamart Developer / Business Analyst"). Use your judgement as a recruiter — the title should help someone quickly understand what this person does. Max 60 characters.
+
+### CONTACT & LOCATION
+4. **email**: Email address exactly as found on the CV. Empty string if not found.
+5. **phone**: Phone number with international dialling code. Preserve the format from the CV. Empty string if not found.
+6. **location**: City and country (e.g., "Athens, Greece", "London, UK", "Thessaloniki, Greece"). Infer from address on CV.
+7. **right_to_work**: Infer from nationality, location, and language clues. MUST be one of: "UK Citizen", "Settled Status", "Pre-Settled", "Tier 2 Visa", "Requires Sponsorship", "EU National", "Other". Rules:
+   - Greek national or address in Greece → "EU National"
+   - UK address + British indicators → "UK Citizen"
+   - EU country national → "EU National"
+   - If cannot determine → "Other"
+
+### AVAILABILITY & RATES
+8. **status**: Always "Available".
+9. **available_from**: If an availability date is explicitly stated on the CV, use it (YYYY-MM-DD). If the most recent role has no end date, return "TBC". If the most recent role has an end date in the past, return "Immediately". If unclear, return "TBC".
+10. **day_rate_gbp**: Always empty string "". Rates are never on CVs.
+11. **rate_flexibility**: Always empty string "". Not determinable from CV.
+
+### SKILLS & EXPERIENCE
+12. **subject_matter_knowledge**: Comma-separated list of domain expertise areas that are **explicitly demonstrated** by the candidate's work history, job titles, or bullet points. Only include a domain if the CV provides clear evidence (e.g., a role in that domain, a bullet point describing that work). Valid categories: Capital Markets, Retail Banking, Investment Banking, Risk Management, Regulatory Compliance, Derivatives, Fixed Income, FX, Commodities, Trade Finance, Payments, Asset Management, Wealth Management, Insurance, Treasury, Operations, Middle Office, Back Office, Front Office, Data & Analytics, Digital Transformation. List only what is supported by the CV — may be fewer than 3 items.
+13. **technical_skills**: Comma-separated list of specific technical/functional skills **explicitly mentioned or clearly demonstrated** in the CV. Only include skills that appear in the CV text (job descriptions, skills sections, certifications). Do NOT add skills that seem likely but aren't stated. May be fewer than 3 items.
+14. **systems**: Comma-separated list of specific named systems, platforms, and tools **explicitly mentioned** in the CV. Do NOT add systems that are common in their industry unless the CV names them. Empty string if none mentioned.
+15. **experience_level**: MUST be one of: "Analyst", "Consultant", "Senior", "Manager", "Director". Rules:
+    - 0-3 years → "Analyst"
+    - 3-6 years → "Consultant"
+    - 6-12 years → "Senior"
+    - 12-20 years → "Manager"
+    - 20+ years → "Director"
+    But also consider job titles: if they hold "Director" or "VP" titles, use "Director". If "Manager" or "Lead", at least "Manager".
+16. **years_experience**: Integer. Calculate from the earliest employment start date to today (February 2026). Count total professional years, not just financial services years.
+
+### SOURCING & ASSESSMENT
+17. **source_referral**: Always "CV Upload".
+18. **source_notes**: Always empty string "".
+19. **date_added**: Always empty string "". Will be auto-filled with today's date.
+20. **interview_notes**: Always empty string "".
+
+### CLIENT FIT & HISTORY
+21. **client_fit_tags**: Comma-separated tags based **only on evidence from the CV**. Use tags from this list where the CV supports them: Financial Services, Capital Markets, Banking, Investment Banking, Near-Shore (only if Greece/EU-based), Regulatory, Technology, Risk, Operations, Accounting, Compliance. Only include tags where the candidate has demonstrable experience. May be fewer than 4.
+22. **contract_history**: Summarise their employment history as comma-separated entries in the format "Employer (Mon YYYY–Mon YYYY)". Include all roles. Most recent first.
+
+### FOLLOW-UP & ADMIN
+23. **last_contacted**: Always empty string "".
+24. **next_follow_up**: Always empty string "".
+25. **cv_filename**: Always empty string "". Will be auto-filled from uploaded filename.
+26. **notes**: A 1-3 sentence **factual** summary using ONLY information from the CV. Rules:
+   - State total years of professional experience (calculated from earliest to most recent role)
+   - Name the key employers and domains they worked in
+   - State location and language certifications using the EXACT wording from the CV
+   - NEVER add evaluative words like "strong", "extensive", "proven", "ideal", "excellent"
+   - NEVER assess fit for any company — just state facts
+   - NEVER paraphrase certifications — use exact names (e.g., "Cambridge Proficiency" not "fluent English")
+   - BAD example: "Strong banking professional, ideal for near-shore operations with fluent English"
+   - GOOD example: "27 years professional experience across banking (Alpha Bank, Emporiki Bank) and accounting. Based in Thessaloniki. English: Cambridge Proficiency. BSc Business Administration ongoing."
+
+## OUTPUT FORMAT
+
+Return EXACTLY this JSON structure (no markdown code blocks, no extra text):
+{
+  "resource_id": "",
+  "full_name": "",
+  "job_title_role": "",
+  "email": "",
+  "phone": "",
+  "location": "",
+  "right_to_work": "",
+  "status": "Available",
+  "available_from": "",
+  "day_rate_gbp": "",
+  "rate_flexibility": "",
+  "subject_matter_knowledge": "",
+  "technical_skills": "",
+  "systems": "",
+  "experience_level": "",
+  "years_experience": 0,
+  "source_referral": "CV Upload",
+  "source_notes": "",
+  "date_added": "",
+  "interview_notes": "",
+  "client_fit_tags": "",
+  "contract_history": "",
+  "last_contacted": "",
+  "next_follow_up": "",
+  "cv_filename": "",
+  "notes": ""
+}`;
+
+function buildUserMessage(cvText) {
+  return `Extract data from the following CV into the Resource Pool format.
+
+<cv_content>
+${cvText}
+</cv_content>
+
+Return ONLY the JSON object. No other text.`;
+}
+
+// ============================================================
+// Defaults (ported from lib/defaults.ts)
+// ============================================================
+function applyDefaults(extracted, filename) {
+  const today = new Date().toISOString().split("T")[0];
+  return {
+    resource_id: "",
+    full_name: extracted.full_name ?? "",
+    job_title_role: extracted.job_title_role ?? "",
+    email: extracted.email ?? "",
+    phone: extracted.phone ?? "",
+    location: extracted.location ?? "",
+    right_to_work: extracted.right_to_work ?? "Other",
+    status: "Available",
+    available_from: extracted.available_from ?? "TBC",
+    day_rate_gbp: "",
+    rate_flexibility: "",
+    subject_matter_knowledge: extracted.subject_matter_knowledge ?? "",
+    technical_skills: extracted.technical_skills ?? "",
+    systems: extracted.systems ?? "",
+    experience_level: extracted.experience_level ?? "Consultant",
+    years_experience: extracted.years_experience ?? 0,
+    source_referral: "CV Upload",
+    source_notes: "",
+    date_added: today,
+    interview_notes: "",
+    client_fit_tags: extracted.client_fit_tags ?? "",
+    contract_history: extracted.contract_history ?? "",
+    last_contacted: "",
+    next_follow_up: "",
+    cv_filename: filename,
+    notes: extracted.notes ?? ""
+  };
+}
+
+// ============================================================
+// Text extraction
+// ============================================================
+async function extractText(file) {
+  const name = file.name.toLowerCase();
+  const buf = await file.arrayBuffer();
+
+  if (name.endsWith(".pdf")) {
+    const pdf = await window.__pdfjs.getDocument({ data: buf }).promise;
+    const parts = [];
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      parts.push(content.items.map(i => i.str).join(" "));
+    }
+    return parts.join("\n");
+  }
+
+  if (name.endsWith(".docx")) {
+    const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return result.value;
+  }
+
+  throw new Error("Unsupported file type. Upload a PDF or DOCX.");
+}
+
+// ============================================================
+// Claude API call (direct browser → api.anthropic.com)
+// ============================================================
+async function callClaude(systemPrompt, userMessage, apiKey) {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      temperature: 0,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }]
+    })
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Claude API error ${res.status}: ${text.slice(0, 400)}`);
+  }
+
+  const data = await res.json();
+  const textBlock = (data.content || []).find(b => b.type === "text");
+  if (!textBlock) throw new Error("No text response from Claude");
+  return textBlock.text;
+}
+
+function parseClaudeJson(raw) {
+  const stripped = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
+  return JSON.parse(stripped);
+}
+
+// ============================================================
+// Export: TSV + XLSX
+// ============================================================
+function toTSV(entry) {
+  return COLUMN_ORDER.map(k => String(entry[k] ?? "").replace(/\t/g, " ").replace(/\n/g, " ")).join("\t");
+}
+
+function downloadXlsx(entry) {
+  const headers = COLUMN_ORDER.map(k => COLUMN_LABELS[k]);
+  const row = COLUMN_ORDER.map(k => entry[k] ?? "");
+  const ws = XLSX.utils.aoa_to_sheet([headers, row]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Resource Entry");
+  const safeName = (entry.full_name || "resource").replace(/\s+/g, "_");
+  XLSX.writeFile(wb, `${safeName}_Resource_Entry.xlsx`);
+}
+
+// ============================================================
+// UI state
+// ============================================================
+const KEY_STORAGE = "cv_extractor_api_key_v1";
+let currentData = null;
+
+function showScreen(id) {
+  for (const s of ["keyScreen", "uploadScreen", "loadingScreen", "resultsScreen"]) {
+    document.getElementById(s).classList.toggle("hidden", s !== id);
+  }
+}
+
+function getKey() { return localStorage.getItem(KEY_STORAGE) || ""; }
+function setKey(k) { localStorage.setItem(KEY_STORAGE, k); }
+function clearKey() { localStorage.removeItem(KEY_STORAGE); }
+
+function showError(msg) {
+  const el = document.getElementById("uploadError");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+function clearError() {
+  document.getElementById("uploadError").classList.add("hidden");
+}
+
+function toast(msg) {
+  const el = document.createElement("div");
+  el.className = "copied-toast";
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+}
+
+// ============================================================
+// Render form
+// ============================================================
+function renderForm(data) {
+  currentData = data;
+  document.getElementById("summaryName").textContent = data.full_name || "Extracted Data";
+  document.getElementById("summaryRole").textContent = data.job_title_role || "Review and edit fields below";
+
+  const container = document.getElementById("categoriesContainer");
+  container.innerHTML = "";
+
+  for (const cat of CATEGORIES) {
+    const section = document.createElement("section");
+    section.className = "category";
+
+    const h3 = document.createElement("h3");
+    h3.textContent = cat.name;
+    section.appendChild(h3);
+
+    const grid = document.createElement("div");
+    grid.className = "fields";
+
+    for (const fname of cat.fields) {
+      const field = document.createElement("div");
+      field.className = "field";
+      if (TEXTAREA_FIELDS.has(fname)) field.classList.add("full");
+
+      const label = document.createElement("label");
+      label.textContent = COLUMN_LABELS[fname];
+      field.appendChild(label);
+
+      let input;
+      if (SELECT_FIELDS[fname]) {
+        input = document.createElement("select");
+        for (const opt of SELECT_FIELDS[fname]) {
+          const o = document.createElement("option");
+          o.value = opt;
+          o.textContent = opt || "—";
+          if ((data[fname] ?? "") === opt) o.selected = true;
+          input.appendChild(o);
+        }
+        input.addEventListener("change", e => {
+          currentData[fname] = e.target.value;
+          updateSummary();
+        });
+      } else if (TEXTAREA_FIELDS.has(fname)) {
+        input = document.createElement("textarea");
+        input.value = data[fname] ?? "";
+        input.addEventListener("input", e => { currentData[fname] = e.target.value; });
+      } else {
+        input = document.createElement("input");
+        input.type = "text";
+        input.value = data[fname] ?? "";
+        input.addEventListener("input", e => {
+          currentData[fname] = fname === "years_experience" ? (Number(e.target.value) || 0) : e.target.value;
+          if (fname === "full_name" || fname === "job_title_role") updateSummary();
+        });
+      }
+
+      field.appendChild(input);
+      grid.appendChild(field);
+    }
+
+    section.appendChild(grid);
+    container.appendChild(section);
+  }
+}
+
+function updateSummary() {
+  document.getElementById("summaryName").textContent = currentData.full_name || "Extracted Data";
+  document.getElementById("summaryRole").textContent = currentData.job_title_role || "Review and edit fields below";
+}
+
+// ============================================================
+// Upload flow
+// ============================================================
+async function handleFile(file) {
+  clearError();
+  showScreen("loadingScreen");
+  const msgEl = document.getElementById("loadingMsg");
+
+  try {
+    msgEl.textContent = "Extracting text from file…";
+    const text = await extractText(file);
+
+    if (!text || text.trim().length < 50) {
+      throw new Error("Could not extract meaningful text from the file. The PDF may be image-based — try a text-based PDF or DOCX.");
+    }
+
+    msgEl.textContent = "Calling Claude to parse the CV…";
+    const raw = await callClaude(SYSTEM_PROMPT, buildUserMessage(text), getKey());
+    const parsed = parseClaudeJson(raw);
+    const finalData = applyDefaults(parsed, file.name);
+
+    renderForm(finalData);
+    showScreen("resultsScreen");
+  } catch (err) {
+    showScreen("uploadScreen");
+    showError(err.message || String(err));
+  }
+}
+
+// ============================================================
+// Wire up
+// ============================================================
+document.addEventListener("DOMContentLoaded", () => {
+  // Key prompt flow
+  if (!getKey()) {
+    showScreen("keyScreen");
+  } else {
+    showScreen("uploadScreen");
+  }
+
+  document.getElementById("keySubmit").addEventListener("click", () => {
+    const val = document.getElementById("keyInput").value.trim();
+    if (!val.startsWith("sk-ant-")) {
+      alert("That doesn't look like an Anthropic key (should start with 'sk-ant-').");
+      return;
+    }
+    setKey(val);
+    showScreen("uploadScreen");
+  });
+  document.getElementById("keyInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("keySubmit").click();
+  });
+
+  document.getElementById("resetKeyBtn").addEventListener("click", () => {
+    if (confirm("Remove the stored API key from this browser?")) {
+      clearKey();
+      showScreen("keyScreen");
+    }
+  });
+
+  // Drag and drop
+  const dz = document.getElementById("dropZone");
+  const fi = document.getElementById("fileInput");
+  dz.addEventListener("click", () => fi.click());
+  dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("dragging"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("dragging"));
+  dz.addEventListener("drop", e => {
+    e.preventDefault();
+    dz.classList.remove("dragging");
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  });
+  fi.addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (f) handleFile(f);
+    fi.value = "";
+  });
+
+  // Action bar
+  document.getElementById("copyTsvBtn").addEventListener("click", async () => {
+    if (!currentData) return;
+    try {
+      await navigator.clipboard.writeText(toTSV(currentData));
+      toast("Copied to clipboard");
+    } catch {
+      alert("Could not copy to clipboard. Try the Download Excel button.");
+    }
+  });
+  document.getElementById("downloadXlsxBtn").addEventListener("click", () => {
+    if (currentData) downloadXlsx(currentData);
+  });
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    currentData = null;
+    clearError();
+    showScreen("uploadScreen");
+  });
+});
+</script>
+
+</body>
+</html>

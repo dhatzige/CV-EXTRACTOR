@@ -8,9 +8,9 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "CV Extractor — Example Consultancy",
+  title: "CV Extractor",
   description:
-    "Upload a CV and extract structured resource pool data for the Example Consultancy tracker.",
+    "Upload a CV and extract structured resource pool data with Claude.",
 };
 
 export default function RootLayout({
