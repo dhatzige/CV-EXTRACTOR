@@ -1,72 +1,24 @@
-# CV Extractor
+# CV-EXTRACTOR
 
-AI-powered CV parser. Upload a PDF or DOCX, and Claude extracts the content into 26 structured fields ready to paste into a Resource Pool tracker or export as `.xlsx`.
+A Claude-powered CV parser that turns resumes into 26 structured, editable fields with Excel/TSV export.
 
-## What it does
+Built in about an hour with Claude Code as an internal tool for a management consultancy, and in production use since: it cut CV data entry from 15+ minutes to about 30 seconds per document. The build speed is part of the point; the care went into the prompt.
 
-- Accepts PDF and DOCX CVs
-- Extracts text locally (pdf-parse / mammoth)
-- Sends the text to Claude with a strict, anti-hallucination system prompt
-- Returns validated JSON matching a 26-column schema (identity, contact, skills, experience, availability, etc.)
-- Renders an editable form grouped into 7 categories
-- Exports as TSV (copy-paste directly into Excel / Google Sheets) or `.xlsx` download
+## What is worth reading
 
-The prompt is the interesting part — it's explicitly told to **never infer or embellish**. Only three fields allow inference (right-to-work status, experience level, years of experience). Everything else must come verbatim from the CV or stay empty. The `notes` field has tight constraints to keep it purely factual.
+The interesting part is the prompt design in `lib/claudePrompt.ts`:
 
-## Tech stack
+- **Anti-hallucination by default.** Every field must come directly from the CV text. Only three fields allow inference (right to work, experience level, years of experience), each with explicit rules.
+- **Human-in-the-loop.** Output lands in an editable review table before export, so the reviewer stays in charge of every record.
+- **Neutral by design.** The notes field is restricted to factual content: no evaluative language, no fit assessments, exact certification names only.
 
-- **Next.js 16** (App Router) + TypeScript
-- **Claude Sonnet 4** via the official `@anthropic-ai/sdk`
-- **pdf-parse** + **mammoth** for text extraction
-- **Tailwind CSS** + **react-dropzone**
-- **exceljs** for one-row XLSX exports
+## Stack
 
-## Run locally
+Next.js, TypeScript, Tailwind, Claude API. Two run modes: `npm run dev`, or open `cv-extractor.html` directly in a browser (no build step; your API key stays in your browser's localStorage).
 
-```bash
-npm install
-cp .env.example .env.local
-# edit .env.local and add your Anthropic API key
-npm run dev
-```
+## Context
 
-Open http://localhost:3000, drop a CV, review, copy or download.
+My production work (a live AI career platform with payments, and a full recruitment ATS) lives in private repositories. This repo is the public sample of how I build with LLMs: guardrails first, shipped fast, reviewed by humans.
 
-## No-build variant
-
-There's also a single-file `cv-extractor.html` at the project root. Double-click to open — it runs entirely in the browser using CDN-loaded pdf.js, mammoth, and SheetJS, and calls the Anthropic API directly with `anthropic-dangerous-direct-browser-access`. Your API key is stored in `localStorage`, never in the file itself.
-
-Use this when you want zero setup and don't need the Next.js server.
-
-## Project layout
-
-```
-app/
-  page.tsx          — main UI (upload → loading → results)
-  api/extract/      — POST endpoint: parses file, calls Claude, returns JSON
-components/         — Header, CVUploader, ExtractionForm, CategorySection, FieldInput, CopyBar
-lib/
-  schema.ts         — 26-field TypeScript schema + category groupings
-  claudePrompt.ts   — system prompt with anti-hallucination rules
-  claudeClient.ts   — Anthropic SDK wrapper
-  defaults.ts       — post-extraction auto-fill (today's date, filename, etc.)
-  exportTSV.ts      — tab-separated export for clipboard
-  exportExcel.ts    — single-row .xlsx builder
-cv-extractor.html   — self-contained browser-only variant
-```
-
-## Schema snapshot
-
-The 26 fields cover: resource ID, full name, job title, email, phone, location, right to work, status, availability, day rate, rate flexibility, subject-matter knowledge, technical skills, systems, experience level, years of experience, source, source notes, date added, interview notes, client-fit tags, contract history, last contacted, next follow-up, CV filename, free-form notes.
-
-Categorical fields (status, right to work, experience level, source, rate flexibility) use strict enums. See `lib/schema.ts` for the full list.
-
-## Why it's interesting
-
-- **Prompt engineering matters more than the model.** The schema is easy — "parse a CV" is a solved problem. The hard part is stopping the model from making things up. This prompt demonstrates one approach: tight field-by-field rules, explicit bad-examples, and a top-level "no assumptions" constraint.
-- **Structured output, not chat.** The endpoint returns typed JSON that maps 1:1 to a spreadsheet. No free-form text to parse.
-- **Minimal surface area.** One API route, no database, no auth. File in, JSON out.
-
-## License
-
-Personal portfolio project. If you find the prompt useful, feel free to adapt it.
+- Live product: [yourjobremote.com](https://yourjobremote.com/en)
+- LinkedIn: [dimitris-chatz](https://www.linkedin.com/in/dimitris-chatz/)
