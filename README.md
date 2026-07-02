@@ -2,7 +2,7 @@
 
 A Claude-powered CV parser that turns resumes into 26 structured, editable fields with Excel/TSV export.
 
-Built in about an hour with Claude Code as an internal tool for a management consultancy, and in production use since: it cut CV data entry from 15+ minutes to about 30 seconds per document. The build speed is part of the point; the care went into the prompt.
+Built in about an hour with Claude Code as an internal tool for a management consultancy, and in production use since for referred-candidate intake: a colleague hands over the CV of someone they know and refer for a role, and the parser turns it into structured, keyword-tagged entries in the recruitment tracker, cutting entry from 15+ minutes to about 30 seconds per document. The build speed is part of the point; the care went into the prompt.
 
 ## What is worth reading
 
