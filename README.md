@@ -16,6 +16,22 @@ The interesting part is the prompt design in `lib/claudePrompt.ts`:
 
 Next.js, TypeScript, Tailwind, Claude API. Two run modes: `npm run dev`, or open `cv-extractor.html` directly in a browser (no build step; your API key stays in your browser's localStorage).
 
+## Quick start
+
+You only need an Anthropic API key ([get one here](https://console.anthropic.com/settings/keys)).
+
+**No build:** download `cv-extractor.html`, open it in a browser, paste your key when prompted. Accepts PDF, DOCX and legacy DOC.
+
+**Next.js:**
+
+```bash
+npm install
+cp .env.example .env.local   # then paste your key into ANTHROPIC_API_KEY
+npm run dev                  # http://localhost:3000
+```
+
+No model configuration needed: the app tries current Claude models in order and, if they have all been retired, asks the API for the newest one available to your key.
+
 ## Context
 
 My production work (a live AI career platform with payments, and a full recruitment ATS) lives in private repositories. This repo is the public sample of how I build with LLMs: guardrails first, shipped fast, reviewed by humans.

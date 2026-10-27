@@ -230,7 +230,7 @@
 <body>
 
 <header class="app">
-  <div class="brand">CV Extractor <small>· local, no-build</small></div>
+  <div class="brand">CV Extractor <small>· local, no-build · v4 (13 Oct 2026)</small></div>
   <div style="display: flex; gap: 8px;">
     <button class="link" id="resetKeyBtn" title="Change the Anthropic API key stored in this browser">Reset key</button>
   </div>
@@ -254,8 +254,8 @@
     <div class="drop" id="dropZone">
       <div class="icon">📄</div>
       <div class="main-text">Drop a CV, or click to choose</div>
-      <div class="sub-text">PDF or DOCX — text-based (scanned/image PDFs won't work)</div>
-      <input type="file" id="fileInput" accept=".pdf,.docx" />
+      <div class="sub-text">PDF, DOCX or DOC — text-based (scanned/image PDFs won't work)</div>
+      <input type="file" id="fileInput" accept=".pdf,.docx,.doc" />
     </div>
     <div id="uploadError" class="error hidden"></div>
   </section>
@@ -289,6 +289,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- mammoth.js (DOCX) -->
 <script src="https://cdn.jsdelivr.net/npm/mammoth@1.11.0/mammoth.browser.min.js"></script>
+<!-- JSZip: reads DOCX header/footer parts that mammoth ignores -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <!-- SheetJS (XLSX export) -->
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 
@@ -488,6 +490,22 @@ ${cvText}
 Return ONLY the JSON object. No other text.`;
 }
 
+// JSON schema handed to the API as a structured-output constraint. The API
+// restricts generation to this shape, so the reply is a JSON object by
+// construction — a preamble, markdown fence or prose answer can no longer
+// reach the parser. Enum fields mirror the dropdowns in SELECT_FIELDS.
+const OUTPUT_SCHEMA = (() => {
+  const str = { type: "string" };
+  const properties = {};
+  for (const key of COLUMN_ORDER) properties[key] = str;
+  properties.right_to_work = { type: "string", enum: RIGHT_TO_WORK_OPTIONS };
+  properties.status = { type: "string", enum: STATUS_OPTIONS };
+  properties.experience_level = { type: "string", enum: EXPERIENCE_LEVEL_OPTIONS };
+  properties.source_referral = { type: "string", enum: SOURCE_OPTIONS };
+  properties.years_experience = { type: "integer" };
+  return { type: "object", properties, required: COLUMN_ORDER, additionalProperties: false };
+})();
+
 // ============================================================
 // Defaults (ported from lib/defaults.ts)
 // ============================================================
@@ -541,49 +559,273 @@ async function extractText(file) {
     return parts.join("\n");
   }
 
-  if (name.endsWith(".docx")) {
-    const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-    return result.value;
+  // Word files: trust the first bytes, not the extension. Agencies often send
+  // a DOCX renamed to .doc (or the reverse), and mammoth only reads DOCX.
+  if (name.endsWith(".docx") || name.endsWith(".doc")) {
+    const head = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
+    const isZip = head[0] === 0x50 && head[1] === 0x4B;                    // "PK" = DOCX
+    const isOle = head[0] === 0xD0 && head[1] === 0xCF && head[2] === 0x11; // Word 97-2003
+    const isRtf = String.fromCharCode(...head.subarray(0, 5)) === "{\\rtf";
+
+    if (isZip) {
+      const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
+      const headerFooter = await docxHeaderFooterText(buf);
+      return [headerFooter, result.value].filter(Boolean).join("\n");
+    }
+    if (isOle) {
+      const doc = docBinaryText(buf);
+      // Name/contacts often sit in a text box or the page header — put them first.
+      return [doc.textBoxes, doc.headerFooter, doc.body].filter(Boolean).join("\n");
+    }
+    if (isRtf) throw new Error("This file is RTF saved with a .doc name. Open it in Word and Save As .docx, then upload that.");
+    throw new Error("This doesn't look like a Word document. Open it in Word and Save As .docx, then upload that.");
   }
 
-  throw new Error("Unsupported file type. Upload a PDF or DOCX.");
+  throw new Error("Unsupported file type. Upload a PDF, DOCX or DOC.");
+}
+
+// ------------------------------------------------------------
+// Legacy Word 97-2003 (.doc) — no CDN library reads these in the browser,
+// so parse the binary directly. The file is an OLE container (opened with
+// the CFB reader bundled in SheetJS); the text lives in the "WordDocument"
+// stream, scattered into pieces listed by a piece table in the "0Table" /
+// "1Table" stream. Format reference: Microsoft [MS-DOC].
+// ------------------------------------------------------------
+function docBinaryText(buf) {
+  if (!window.XLSX || !window.XLSX.CFB) throw new Error("The .doc reader did not load (blocked CDN?). Reload the page, or Save As .docx.");
+  const CFB = window.XLSX.CFB;
+  const cfb = CFB.read(new Uint8Array(buf), { type: "array" });
+  const stream = name => {
+    const entry = CFB.find(cfb, name);
+    return entry && entry.content ? new Uint8Array(entry.content) : null;
+  };
+  const wd = stream("WordDocument");
+  if (!wd) throw new Error("This .doc has no Word content. Open it in Word and Save As .docx.");
+  const dv = new DataView(wd.buffer, wd.byteOffset, wd.byteLength);
+  const flags = dv.getUint16(0x0A, true);
+  if (flags & 0x0100) throw new Error("This .doc is password-protected. Open it in Word and save an unprotected .docx.");
+  const table = stream(flags & 0x0200 ? "1Table" : "0Table");
+  if (!table) throw new Error("This .doc is from Word 95 or older (or damaged). Open it in Word and Save As .docx.");
+  const tv = new DataView(table.buffer, table.byteOffset, table.byteLength);
+
+  // Story lengths in characters, in the order the stories are stored.
+  const ccp = off => dv.getInt32(off, true);
+  const ccpText = ccp(0x4C), ccpFtn = ccp(0x50), ccpHdd = ccp(0x54);
+  const ccpAtn = ccp(0x5C), ccpEdn = ccp(0x60), ccpTxbx = ccp(0x64), ccpHdrTxbx = ccp(0x68);
+
+  // Walk the Clx (at fcClx in the table stream) past any Prc blocks to the piece table.
+  let pos = dv.getUint32(0x1A2, true);
+  const clxEnd = pos + dv.getUint32(0x1A6, true);
+  while (pos < clxEnd && table[pos] === 0x01) pos += 3 + tv.getInt16(pos + 1, true);
+  if (table[pos] !== 0x02) throw new Error("Could not read the text of this .doc. Open it in Word and Save As .docx.");
+  const plc = pos + 5;
+  const n = (tv.getUint32(pos + 1, true) - 4) / 12; // n+1 CPs (4 bytes) + n piece descriptors (8 bytes)
+
+  const dec16 = new TextDecoder("utf-16le");
+  let all = "";
+  for (let i = 0; i < n; i++) {
+    const len = tv.getUint32(plc + (i + 1) * 4, true) - tv.getUint32(plc + i * 4, true);
+    const fc = tv.getUint32(plc + (n + 1) * 4 + i * 8 + 2, true);
+    if (fc & 0x40000000) {
+      const off = (fc & 0x3FFFFFFF) / 2;          // "compressed": 1 byte per char
+      all += decodeCp1252(wd.subarray(off, off + len));
+    } else {
+      all += dec16.decode(wd.subarray(fc, fc + len * 2));
+    }
+  }
+
+  const slice = (start, len) => all.substr(start, Math.max(0, len));
+  const hdrStart = ccpText + ccpFtn;
+  const txbxStart = hdrStart + ccpHdd + ccpAtn + ccpEdn;
+  return {
+    body: cleanDocText(slice(0, ccpText)),
+    // Header/footer stories repeat per section (first page, odd, even) — keep each line once.
+    headerFooter: [...new Set(cleanDocText(slice(hdrStart, ccpHdd)).split("\n"))].join("\n"),
+    textBoxes: cleanDocText(slice(txbxStart, ccpTxbx) + "\r" + slice(txbxStart + ccpTxbx, ccpHdrTxbx)),
+  };
+}
+
+// "Compressed" pieces are 8-bit Windows-1252. Bytes 0x80-0x9F hold the smart
+// quotes and dashes; map them explicitly rather than trusting TextDecoder's
+// label support (Node's small-ICU build decodes them as Latin-1).
+const CP1252_HIGH = "\u20AC\u0081\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\u008D\u017D\u008F" +
+                    "\u0090\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\u009D\u017E\u0178";
+function decodeCp1252(bytes) {
+  let out = "";
+  for (const b of bytes) out += b >= 0x80 && b <= 0x9F ? CP1252_HIGH[b - 0x80] : String.fromCharCode(b);
+  return out;
+}
+
+// Word keeps control characters inline with the text: paragraph and cell
+// marks, field codes, picture/footnote anchors. Reduce them to plain text.
+function cleanDocText(s) {
+  return s
+    .replace(/\x13[^\x13\x14\x15]*\x14/g, "")  // field instruction (e.g. HYPERLINK "…"); keep its visible result
+    .replace(/\x13[^\x13\x14\x15]*\x15/g, "")  // field with no visible result
+    .replace(/[\x14\x15]/g, "")
+    .replace(/\x07/g, "\t")                      // table cell / row end
+    .replace(/[\r\x0B\x0C]/g, "\n")              // paragraph, line break, page break
+    .replace(/\x1E/g, "-").replace(/\x1F/g, "")  // non-breaking / optional hyphen
+    .replace(/\xA0/g, " ")
+    .replace(/[\x00-\x08\x0E-\x1D]/g, "")       // object / picture / footnote anchors
+    .split("\n").map(l => l.replace(/[ \t]+/g, " ").trim()).filter(Boolean).join("\n");
+}
+
+// mammoth deliberately ignores page headers and footers, but many CV
+// templates put the name and contact details there (seen Sep 2026: a DOCX
+// whose name, phones and email were all in word/header*.xml, so Claude got a
+// nameless CV). Read those parts straight out of the zip and prepend them.
+async function docxHeaderFooterText(buf) {
+  if (!window.JSZip) {
+    console.warn("JSZip did not load (blocked CDN?) — DOCX header/footer text will be skipped.");
+    return "";
+  }
+  try {
+    const zip = await window.JSZip.loadAsync(buf);
+    const parts = Object.keys(zip.files)
+      .filter(n => /^word\/(header|footer)\d*\.xml$/.test(n))
+      .sort();
+    const seen = new Set();
+    const lines = [];
+    for (const part of parts) {
+      const xml = await zip.file(part).async("string");
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      for (const para of doc.getElementsByTagName("w:p")) {
+        const text = [...para.getElementsByTagName("w:t")]
+          .map(t => t.textContent)
+          .join("")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text && !seen.has(text)) { seen.add(text); lines.push(text); }
+      }
+    }
+    return lines.join("\n");
+  } catch (err) {
+    console.warn("DOCX header/footer read failed — continuing with body text only.", err);
+    return ""; // header text is a bonus; never let it block extraction
+  }
 }
 
 // ============================================================
 // Claude API call (direct browser → api.anthropic.com)
 // ============================================================
-async function callClaude(systemPrompt, userMessage, apiKey) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      temperature: 0,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }]
-    })
-  });
+// Ordered preference list of current-generation model aliases. If every one
+// has been retired, the newest model available to this API key is discovered
+// live via /v1/models — so a model retirement can never break the tool again.
+const MODEL_CANDIDATES = ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"];
+let resolvedModel = null; // the model that last worked, tried first next time
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Claude API error ${res.status}: ${text.slice(0, 400)}`);
-  }
-
-  const data = await res.json();
-  const textBlock = (data.content || []).find(b => b.type === "text");
-  if (!textBlock) throw new Error("No text response from Claude");
-  return textBlock.text;
+function apiHeaders(apiKey) {
+  return {
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+    "anthropic-dangerous-direct-browser-access": "true",
+    "content-type": "application/json"
+  };
 }
 
+async function apiError(res) {
+  const text = await res.text().catch(() => "");
+  let detail = "";
+  try { detail = JSON.parse(text).error.message || ""; } catch { detail = text.slice(0, 200); }
+  if (res.status === 401) {
+    return new Error("The API key was rejected. Click “Change API key” and paste a current key from console.anthropic.com/settings/keys.");
+  }
+  if (res.status === 429) {
+    return new Error("Rate limit reached — wait a minute and try again.");
+  }
+  if (res.status >= 500) {
+    return new Error("The Anthropic API is temporarily overloaded — try again shortly.");
+  }
+  return new Error(`Claude API error ${res.status}: ${detail}`);
+}
+
+async function newestAvailableModel(apiKey) {
+  const res = await fetch("https://api.anthropic.com/v1/models?limit=1", {
+    headers: apiHeaders(apiKey)
+  });
+  if (!res.ok) throw await apiError(res);
+  const data = await res.json();
+  if (!data.data || !data.data.length) {
+    throw new Error("No Claude models are available to this API key.");
+  }
+  return data.data[0].id;
+}
+
+async function callClaude(systemPrompt, userMessage, apiKey) {
+  const candidates = [...new Set([resolvedModel, ...MODEL_CANDIDATES].filter(Boolean))];
+  let refusal = null; // last safety-classifier decline, reported if nothing else works
+
+  // One extra iteration past the static list: ask the API what exists.
+  for (let i = 0; i <= candidates.length; i++) {
+    const model = i < candidates.length ? candidates[i] : await newestAvailableModel(apiKey);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: apiHeaders(apiKey),
+      // No `temperature`: Claude 5+ models reject it as deprecated. Newer
+      // models also reason adaptively by default and those tokens count
+      // toward max_tokens — hence the generous cap for a ~1K-token answer.
+      body: JSON.stringify({
+        model,
+        max_tokens: 8000,
+        system: systemPrompt,
+        output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
+        messages: [{ role: "user", content: userMessage }]
+      })
+    });
+
+    if (res.status === 404) { resolvedModel = null; continue; } // model retired — try next
+    if (!res.ok) throw await apiError(res);
+
+    const data = await res.json();
+
+    // A safety-classifier decline is HTTP 200 with stop_reason "refusal" and
+    // no JSON in the text — previously this fell through to the parser and
+    // surfaced as "reply did not contain a JSON object". Try the next model.
+    if (data.stop_reason === "refusal") {
+      refusal = { model, ...(data.stop_details || {}) };
+      resolvedModel = null;
+      continue;
+    }
+    if (data.stop_reason === "max_tokens") {
+      throw new Error("Claude's response was cut off before the JSON was complete — try again.");
+    }
+
+    // Join every text block: reasoning models can split a reply across
+    // several, and taking only the first would drop the JSON.
+    const text = (data.content || [])
+      .filter(b => b.type === "text")
+      .map(b => b.text)
+      .join("")
+      .trim();
+    if (!text) throw new Error(`Claude (${model}) returned an empty reply (stop reason: ${data.stop_reason}).`);
+    resolvedModel = model;
+    return text;
+  }
+
+  if (refusal) {
+    const why = refusal.explanation || refusal.category || "no reason given";
+    throw new Error(`Claude declined to process this CV and every fallback model declined too. Last reason (${refusal.model}): ${why}`);
+  }
+  throw new Error("No usable Claude model was found. Check console.anthropic.com for current model names.");
+}
+
+// With OUTPUT_SCHEMA the reply is bare JSON. The fence/preamble tolerance is
+// kept as belt-and-braces, and when parsing still fails the error quotes the
+// start of the reply so the cause is visible instead of a bare "no JSON".
 function parseClaudeJson(raw) {
-  const stripped = raw.replace(/^```json?\n?/, "").replace(/\n?```$/, "").trim();
-  return JSON.parse(stripped);
+  const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end <= start) {
+      const excerpt = raw.trim().replace(/\s+/g, " ").slice(0, 240);
+      throw new Error(`Claude's reply did not contain a JSON object. It said: “${excerpt}${raw.trim().length > 240 ? "…" : ""}”`);
+    }
+    return JSON.parse(raw.slice(start, end + 1));
+  }
 }
 
 // ============================================================
@@ -591,6 +833,64 @@ function parseClaudeJson(raw) {
 // ============================================================
 function toTSV(entry) {
   return COLUMN_ORDER.map(k => String(entry[k] ?? "").replace(/\t/g, " ").replace(/\n/g, " ")).join("\t");
+}
+
+// Rich clipboard payload, styled to match the Resource Pool tracker
+// exactly (Arial 10, #333333 text, blue bold Resource ID, bold name, thin
+// #BFBFBF borders, top-aligned, wrapped long-text columns, centred short
+// columns, dd mmm yyyy dates). Excel reads the text/html flavour, so a plain
+// Cmd+V into the next empty row needs no reformatting. Column order is the
+// tracker's A:Z. No header row: paste under the tracker's own headers.
+const CENTERED_FIELDS = new Set([
+  "resource_id","right_to_work","status","available_from","day_rate_gbp",
+  "rate_flexibility","experience_level","years_experience","source_referral",
+  "date_added","last_contacted","next_follow_up"
+]);
+const DATE_FIELDS = new Set(["available_from", "date_added", "last_contacted", "next_follow_up"]);
+const COLUMN_WIDTHS_PX = {
+  full_name: 160, job_title_role: 220, email: 190, phone: 130, location: 140,
+  subject_matter_knowledge: 260, technical_skills: 260, systems: 200,
+  client_fit_tags: 200, contract_history: 320, interview_notes: 220, notes: 360
+};
+
+function escapeHtml(v) {
+  return String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function toClipboardHtml(entry) {
+  const base = "font-family:Arial,sans-serif;font-size:10pt;color:#333333;border:0.5pt solid #BFBFBF;padding:2px 4px;vertical-align:top;";
+  const cols = COLUMN_ORDER.map(k => `<col width="${COLUMN_WIDTHS_PX[k] || 90}">`).join("");
+  const cells = COLUMN_ORDER.map(k => {
+    const raw = entry[k] ?? "";
+    const centred = CENTERED_FIELDS.has(k);
+    const wrap = TEXTAREA_FIELDS.has(k) ? "white-space:normal;" : "white-space:nowrap;";
+    // Keep phones as text so Excel doesn't turn "07700 900123" into a number;
+    // dates and the years count get the tracker's number formats.
+    let numFmt = "";
+    if (k === "phone" || k === "resource_id") numFmt = "mso-number-format:'\\@';";
+    else if (DATE_FIELDS.has(k) && /^\d{4}-\d{2}-\d{2}$/.test(String(raw))) numFmt = "mso-number-format:'dd mmm yyyy';";
+    else if (k === "years_experience") numFmt = "mso-number-format:'0';";
+    let emphasis = "";
+    if (k === "resource_id") emphasis = "font-weight:bold;color:#2E5090;";
+    else if (k === "full_name") emphasis = "font-weight:bold;";
+    const style = base + `text-align:${centred ? "center" : "left"};` + wrap + numFmt + emphasis;
+    const html = escapeHtml(raw).replace(/\r?\n/g, "<br>");
+    return `<td style="${style}">${html}</td>`;
+  }).join("");
+  return `<table border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse;"><colgroup>${cols}</colgroup><tr>${cells}</tr></table>`;
+}
+
+async function copyEntry(entry) {
+  const tsv = toTSV(entry);
+  if (window.ClipboardItem && navigator.clipboard.write) {
+    const item = new ClipboardItem({
+      "text/html": new Blob([toClipboardHtml(entry)], { type: "text/html" }),
+      "text/plain": new Blob([tsv], { type: "text/plain" })
+    });
+    await navigator.clipboard.write([item]);
+  } else {
+    await navigator.clipboard.writeText(tsv); // older browsers: values only
+  }
 }
 
 function downloadXlsx(entry) {
@@ -722,7 +1022,7 @@ async function handleFile(file) {
     const text = await extractText(file);
 
     if (!text || text.trim().length < 50) {
-      throw new Error("Could not extract meaningful text from the file. The PDF may be image-based — try a text-based PDF or DOCX.");
+      throw new Error("Could not extract meaningful text from the file. The PDF may be image-based — try a text-based PDF, DOCX or DOC.");
     }
 
     msgEl.textContent = "Calling Claude to parse the CV…";
@@ -791,8 +1091,8 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("copyTsvBtn").addEventListener("click", async () => {
     if (!currentData) return;
     try {
-      await navigator.clipboard.writeText(toTSV(currentData));
-      toast("Copied to clipboard");
+      await copyEntry(currentData);
+      toast("Copied to clipboard — paste into the tracker");
     } catch {
       alert("Could not copy to clipboard. Try the Download Excel button.");
     }

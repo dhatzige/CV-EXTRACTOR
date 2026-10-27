@@ -1,5 +1,5 @@
 // ============================================================
-// PP Resource Pool Tracker — Schema (matches Excel columns A–Z)
+// Resource Pool Tracker — Schema (matches Excel columns A–Z)
 // ============================================================
 
 export interface ResourceEntry {

@@ -17,7 +17,7 @@ export async function generateExcelRow(entry: ResourceEntry): Promise<Blob> {
   const values = COLUMN_ORDER.map((key) => String(entry[key] ?? ""));
   sheet.addRow(values);
 
-  // Style header row to match PP tracker (navy background, white text)
+  // Style header row to match the tracker (navy background, white text)
   const headerRow = sheet.getRow(1);
   headerRow.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };

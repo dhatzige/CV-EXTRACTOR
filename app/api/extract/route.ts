@@ -63,11 +63,7 @@ export async function POST(request: NextRequest) {
     // Step 3: Parse JSON from response
     let parsed: Partial<ResourceEntry>;
     try {
-      const jsonStr = claudeResponse
-        .replace(/^```json?\n?/, "")
-        .replace(/\n?```$/, "")
-        .trim();
-      parsed = JSON.parse(jsonStr);
+      parsed = extractJsonObject(claudeResponse);
     } catch {
       return NextResponse.json(
         { error: "Failed to parse extraction results. Please try again." },
@@ -84,5 +80,25 @@ export async function POST(request: NextRequest) {
     const message =
       error instanceof Error ? error.message : "An unexpected error occurred";
     return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// Claude normally returns bare JSON, but model updates have changed response
+// framing before (markdown fences, a one-line preamble). Fall back to slicing
+// the outermost {...} so a framing change never breaks extraction.
+function extractJsonObject(raw: string): Partial<ResourceEntry> {
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    return JSON.parse(stripped);
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end <= start) {
+      throw new Error("No JSON object found in Claude's response");
+    }
+    return JSON.parse(raw.slice(start, end + 1));
   }
 }
