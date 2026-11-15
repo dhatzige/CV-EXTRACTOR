@@ -2,7 +2,7 @@
 
 A Claude-powered CV parser that turns resumes into 26 structured, editable fields with Excel/TSV export.
 
-Built in about an hour with Claude Code as an internal tool for a management consultancy, and in production use since for referred-candidate intake: a colleague hands over the CV of someone they know and refer for a role, and the parser turns it into structured, keyword-tagged entries in the recruitment tracker, cutting entry from 15+ minutes to about 30 seconds per document. The build speed is part of the point; the care went into the prompt.
+Built in about an hour with Claude Code as an internal tool for a management consultancy, and in use since for referred-candidate intake: a colleague hands over the CV of someone they know and refer for a role, and the parser turns it into structured, keyword-tagged entries in the recruitment tracker. The build speed is part of the point; the care went into the prompt.
 
 ## What is worth reading
 
@@ -34,7 +34,7 @@ No model configuration needed: the app tries current Claude models in order and,
 
 ## Context
 
-My production work (a live AI career platform with payments, and a full recruitment ATS) lives in private repositories. This repo is the public sample of how I build with LLMs: guardrails first, shipped fast, reviewed by humans.
+My production work (a live AI career platform with payments, and an early-careers platform with a built-in ATS) lives in private repositories. This repo is the public sample of how I build with LLMs: guardrails first, shipped fast, reviewed by humans.
 
 - Live product: [yourjobremote.com](https://yourjobremote.com/en)
 - LinkedIn: [dimitris-chatz](https://www.linkedin.com/in/dimitris-chatz/)
