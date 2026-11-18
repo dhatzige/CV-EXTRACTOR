@@ -12,6 +12,7 @@ export default function Home() {
   const [state, setState] = useState<AppState>("upload");
   const [data, setData] = useState<ResourceEntry | null>(null);
   const [error, setError] = useState<string>("");
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>("");
 
   const handleFileSelected = useCallback(async (file: File) => {
@@ -35,6 +36,7 @@ export default function Home() {
       }
 
       setData(result.data);
+      setWarnings(result.warnings ?? []);
       setState("results");
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred");
@@ -53,6 +55,7 @@ export default function Home() {
     setState("upload");
     setData(null);
     setError("");
+    setWarnings([]);
     setFileName("");
   }, []);
 
@@ -119,6 +122,19 @@ export default function Home() {
       )}
 
       {/* Results State */}
+      {state === "results" && data && warnings.length > 0 && (
+        <div className="mx-auto mt-6 max-w-4xl px-6">
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="mb-1 font-semibold">Corrected by the evidence check, review before pasting:</p>
+            <ul className="list-disc pl-5">
+              {warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {state === "results" && data && (
         <ExtractionForm
           data={data}

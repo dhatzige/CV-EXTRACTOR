@@ -7,6 +7,7 @@ import mammoth from "mammoth";
 import { callClaude } from "@/lib/claudeClient";
 import { buildPrompt } from "@/lib/claudePrompt";
 import { applyDefaults } from "@/lib/defaults";
+import { enforceEvidence } from "@/lib/evidenceCheck";
 import { ResourceEntry } from "@/lib/schema";
 
 // pdf-parse v1.1.1 — import the lib directly to avoid its test-file bug
@@ -74,7 +75,10 @@ export async function POST(request: NextRequest) {
     // Step 4: Apply auto-fill defaults (overrides Claude for operational fields)
     const result = applyDefaults(parsed, filename);
 
-    return NextResponse.json({ data: result });
+    // Step 5: Deterministic checks against the CV text (see lib/evidenceCheck.ts)
+    const { entry, warnings } = enforceEvidence(result, extractedText);
+
+    return NextResponse.json({ data: entry, warnings });
   } catch (error: unknown) {
     console.error("Extraction error:", error);
     const message =

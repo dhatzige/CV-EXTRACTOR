@@ -14,11 +14,19 @@ const anthropic = new Anthropic({
 // /v1/models — so a model retirement can never break extraction again.
 const MODEL_CANDIDATES: string[] = [
   process.env.CLAUDE_MODEL,
+  "claude-fable-5-2",
+  "claude-opus-5-5",
   "claude-fable-5",
   "claude-sonnet-5",
   "claude-opus-4-8",
   "claude-haiku-4-5",
 ].filter((m): m is string => Boolean(m));
+
+// Effort is set explicitly rather than left to each model's default (which
+// differs: `high` on Fable, `medium` on Opus 5.5). Haiku 4.5 rejects it.
+function effortFor(model: string) {
+  return model.startsWith("claude-haiku-4") ? undefined : { effort: "high" as const };
+}
 
 // The model that last succeeded — tried first on subsequent calls so the
 // fallback walk only ever happens once per process (or again if it retires).
@@ -45,10 +53,16 @@ async function extractWith(
   // toward max_tokens — hence the generous cap for a ~1K-token JSON answer.
   const response = await anthropic.messages.create({
     model,
-    max_tokens: 8000,
+    max_tokens: 16000,
+    ...(effortFor(model) && { output_config: effortFor(model) }),
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
+
+  // Server log only: which model ran and what the call used, for cost checks.
+  console.log(
+    `[extract] ${response.model} in=${response.usage.input_tokens} out=${response.usage.output_tokens} stop=${response.stop_reason}`
+  );
 
   if (response.stop_reason === "max_tokens") {
     throw new Error(

@@ -230,7 +230,7 @@
 <body>
 
 <header class="app">
-  <div class="brand">CV Extractor <small>· local, no-build · v6 (6 Nov 2026)</small></div>
+  <div class="brand">CV Extractor <small>· local, no-build · v8 (18 Nov 2026)</small></div>
   <div style="display: flex; gap: 8px;">
     <button class="link" id="resetKeyBtn" title="Change the Anthropic API key stored in this browser">Reset key</button>
   </div>
@@ -281,6 +281,7 @@
         <button class="ghost" id="resetBtn">Upload Another</button>
       </div>
     </div>
+    <div id="evidenceWarnings" class="hidden" style="margin:16px 0;padding:12px 16px;border:1px solid #f0c36d;background:#fff8e6;color:#7a4b00;border-radius:8px;font-size:14px;"></div>
     <div id="categoriesContainer"></div>
   </section>
 </main>
@@ -724,7 +725,10 @@ async function docxHeaderFooterText(buf) {
 // Ordered preference list of current-generation model aliases. If every one
 // has been retired, the newest model available to this API key is discovered
 // live via /v1/models — so a model retirement can never break the tool again.
-const MODEL_CANDIDATES = ["claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"];
+const MODEL_CANDIDATES = ["claude-fable-5-2", "claude-opus-5-5", "claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"];
+// Effort is set explicitly rather than left to each model's default (which
+// differs: `high` on Fable, `medium` on Opus 5.5). Haiku 4.5 rejects it.
+const effortFor = (model) => (model.startsWith("claude-haiku-4") ? {} : { effort: "high" });
 let resolvedModel = null; // the model that last worked, tried first next time
 
 function apiHeaders(apiKey) {
@@ -779,9 +783,9 @@ async function callClaude(systemPrompt, userMessage, apiKey) {
       // toward max_tokens — hence the generous cap for a ~1K-token answer.
       body: JSON.stringify({
         model,
-        max_tokens: 8000,
+        max_tokens: 16000,
         system: systemPrompt,
-        output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
+        output_config: { ...effortFor(model), format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
         messages: [{ role: "user", content: userMessage }]
       })
     });
@@ -936,6 +940,17 @@ function showError(msg) {
   el.textContent = msg;
   el.classList.remove("hidden");
 }
+function showWarnings(warnings) {
+  const el = document.getElementById("evidenceWarnings");
+  el.innerHTML = "";
+  if (!warnings.length) { el.classList.add("hidden"); return; }
+  const title = document.createElement("strong");
+  title.textContent = "Corrected by the evidence check, review before pasting:";
+  const list = document.createElement("ul");
+  for (const w of warnings) { const li = document.createElement("li"); li.textContent = w; list.appendChild(li); }
+  el.append(title, list);
+  el.classList.remove("hidden");
+}
 function clearError() {
   document.getElementById("uploadError").classList.add("hidden");
 }
@@ -1021,6 +1036,162 @@ function updateSummary() {
   document.getElementById("summaryRole").textContent = currentData.job_title_role || "Review and edit fields below";
 }
 
+// BEGIN evidence-check (generated from lib/evidenceCheck.ts; regenerate, don't hand-edit)
+// ============================================================
+// Evidence check — deterministic rules applied after extraction
+// ============================================================
+//
+// The model is told to use only the CV's own words, but it follows that rule
+// most of the time, not every time. These checks run in code, so they hold on
+// every run:
+//   1. A sector, domain or tag is removed when no word supporting it appears
+//      anywhere in the CV text (e.g. "Investment Banking" for a CV that never
+//      says investment banking).
+//   2. years_experience is counted from the earliest start date in the
+//      contract history, not left to the model's arithmetic.
+//   3. Notes over the 900-character cap are flagged (never truncated).
+// Every change is reported back as a warning so the reviewer can see it.
+//
+// Keep in sync with the copy in cv-extractor.html (between the
+// "BEGIN evidence-check" / "END evidence-check" markers).
+const FINANCE = /\bfinance\b|financial control|financial reporting|financial planning|planning (?:&|and) analysis|\bCFO\b|\bFP&A\b|controllership|financial controller/i;
+// Lower-case category or tag name → evidence the CV text must contain.
+// Names not listed here (the CV's own wording) are left alone.
+const EVIDENCE = {
+    "investment banking": /investment bank/i,
+    "capital markets": /capital markets?|global markets|\bFICC\b|\bDCM\b|\bECM\b|sales (?:&|and) trading|trading desk/i,
+    "retail banking": /retail/i,
+    "commercial banking": /commercial bank/i,
+    banking: /\bbank/i,
+    "financial services": /financial services|\bbank|insur|asset manag|wealth|capital markets|fintech|payments|brokerage|securities|investment/i,
+    "wealth management": /wealth/i,
+    "asset management": /asset manag|fund manag|investment manag/i,
+    insurance: /insur/i,
+    "trade finance": /trade financ/i,
+    payments: /payment/i,
+    treasury: /treasury/i,
+    derivatives: /derivativ|\bswaps?\b|\boptions\b|\bfutures\b/i,
+    "fixed income": /fixed income|\bbonds?\b|\bFICC\b|\brates\b/i,
+    fx: /\bFX\b|foreign exchange/i,
+    commodities: /commodit/i,
+    "business transformation": /transform/i,
+    transformation: /transform/i,
+    "digital transformation": /digital/i,
+    "finance & financial control": FINANCE,
+    finance: FINANCE,
+    accounting: /accountan|accounting|\bACCA\b|\bICAEW\b|\bCIMA\b|\bCPA\b|\bIFRS\b|\bGAAP\b/i,
+    governance: /governance/i,
+    "financial crime": /financial crime|\bAML\b|anti[- ]money|money laundering|\bKYC\b|sanctions|\bCTF\b|fincrime/i,
+    fraud: /fraud/i,
+    conduct: /conduct/i,
+    surveillance: /surveillance/i,
+    controls: /control/i,
+    "controls & assurance": /control|assurance/i,
+    audit: /audit/i,
+    "internal audit": /internal audit/i,
+    compliance: /complian/i,
+    regulatory: /regulat/i,
+    "regulatory compliance": /regulat|complian/i,
+    risk: /risk/i,
+    "risk management": /risk/i,
+    "operational risk": /operational risk/i,
+    "non-financial risk": /non[- ]financial risk|\bNFR\b/i,
+    operations: /operation/i,
+    "middle office": /middle office/i,
+    "back office": /back office/i,
+    "front office": /front office/i,
+    "data & analytics": /\bdata\b|analytics/i,
+    technology: /technolog|software|\bsystems?\b|\bIT\b|digital|\bdata\b|cloud|platform/i,
+};
+const MONTHS = {
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+    jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+const NOTES_MAX = 900;
+// Split "A, B (x, y), C" on top-level commas only, so bracketed qualifiers stay whole.
+function splitList(value) {
+    const items = [];
+    let depth = 0;
+    let current = "";
+    for (const ch of value) {
+        if (ch === "(")
+            depth++;
+        if (ch === ")")
+            depth = Math.max(0, depth - 1);
+        if (ch === "," && depth === 0) {
+            items.push(current.trim());
+            current = "";
+        }
+        else {
+            current += ch;
+        }
+    }
+    if (current.trim())
+        items.push(current.trim());
+    return items.filter(Boolean);
+}
+function unsupportedItems(value, cvText) {
+    const kept = [];
+    const removed = [];
+    for (const item of splitList(value)) {
+        const base = item.replace(/\s*\(.*$/, "").trim().toLowerCase();
+        const pattern = EVIDENCE[base];
+        if (pattern && !pattern.test(cvText))
+            removed.push(item);
+        else
+            kept.push(item);
+    }
+    return { kept: kept.join(", "), removed };
+}
+// Earliest "(Mon YYYY–" or "(YYYY–" start date in the contract history.
+function earliestStart(history) {
+    let best = null;
+    const re = /\((?:([A-Za-z]{3,9})\.?\s+)?((?:19|20)\d{2})\s*[–—-]/g;
+    for (const m of history.matchAll(re)) {
+        const month = m[1] ? MONTHS[m[1].slice(0, 3).toLowerCase()] ?? 0 : 0;
+        const year = Number(m[2]);
+        if (!best || year < best.year || (year === best.year && month < best.month)) {
+            best = { year, month, label: m[1] ? `${m[1]} ${m[2]}` : m[2] };
+        }
+    }
+    return best;
+}
+function enforceEvidence(entry, cvText, today = new Date()) {
+    const out = { ...entry };
+    const warnings = [];
+    // 1. Domains and tags must have supporting words in the CV.
+    for (const [field, label] of [
+        ["subject_matter_knowledge", "Subject Matter"],
+        ["client_fit_tags", "Client Fit Tags"],
+    ]) {
+        const { kept, removed } = unsupportedItems(out[field], cvText);
+        if (removed.length) {
+            out[field] = kept;
+            for (const item of removed) {
+                warnings.push(`Removed "${item}" from ${label}: the CV never mentions it.`);
+            }
+        }
+    }
+    // 2. Years of experience counted in code from the earliest role.
+    const start = earliestStart(out.contract_history);
+    if (start) {
+        const months = (today.getFullYear() - start.year) * 12 + (today.getMonth() - start.month);
+        const years = Math.floor(months / 12);
+        const claimed = Number(out.years_experience);
+        if (years >= 0 && years <= 60 && years !== claimed) {
+            out.years_experience = years;
+            out.notes = out.notes.replace(new RegExp(`\\b${claimed}(\\+)? years`), `${years}$1 years`);
+            warnings.push(`Years of experience set to ${years}, counted from the earliest role (${start.label}); Claude said ${claimed}.`);
+        }
+    }
+    // 3. Notes length cap: flag only, a person decides what to cut.
+    if (out.notes.length > NOTES_MAX) {
+        warnings.push(`Notes are ${out.notes.length} characters, over the ${NOTES_MAX} limit: trim before pasting.`);
+    }
+    return { entry: out, warnings };
+}
+// END evidence-check
+
 // ============================================================
 // Upload flow
 // ============================================================
@@ -1040,9 +1211,10 @@ async function handleFile(file) {
     msgEl.textContent = "Calling Claude to parse the CV…";
     const raw = await callClaude(SYSTEM_PROMPT, buildUserMessage(text), getKey());
     const parsed = parseClaudeJson(raw);
-    const finalData = applyDefaults(parsed, file.name);
+    const { entry: finalData, warnings } = enforceEvidence(applyDefaults(parsed, file.name), text);
 
     renderForm(finalData);
+    showWarnings(warnings);
     showScreen("resultsScreen");
   } catch (err) {
     showScreen("uploadScreen");
