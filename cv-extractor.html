@@ -727,8 +727,10 @@ async function docxHeaderFooterText(buf) {
 // live via /v1/models — so a model retirement can never break the tool again.
 const MODEL_CANDIDATES = ["claude-fable-5-2", "claude-opus-5-5", "claude-fable-5", "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5"];
 // Effort is set explicitly rather than left to each model's default (which
-// differs: `high` on Fable, `medium` on Opus 5.5). Haiku 4.5 rejects it.
-const effortFor = (model) => (model.startsWith("claude-haiku-4") ? {} : { effort: "high" });
+// differs: `high` on Fable, `medium` on Opus 5.5). `medium` on Fable 5.2 keeps
+// cost and time down; the evidence check (lib/evidenceCheck.ts) backs it up.
+// Haiku 4.5 rejects the parameter.
+const effortFor = (model) => (model.startsWith("claude-haiku-4") ? {} : { effort: "medium" });
 let resolvedModel = null; // the model that last worked, tried first next time
 
 function apiHeaders(apiKey) {

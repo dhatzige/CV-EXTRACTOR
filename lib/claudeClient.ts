@@ -23,9 +23,11 @@ const MODEL_CANDIDATES: string[] = [
 ].filter((m): m is string => Boolean(m));
 
 // Effort is set explicitly rather than left to each model's default (which
-// differs: `high` on Fable, `medium` on Opus 5.5). Haiku 4.5 rejects it.
+// differs: `high` on Fable, `medium` on Opus 5.5). `medium` on Fable 5.2 keeps
+// cost and time down; the evidence check (lib/evidenceCheck.ts) backs it up.
+// Haiku 4.5 rejects the parameter.
 function effortFor(model: string) {
-  return model.startsWith("claude-haiku-4") ? undefined : { effort: "high" as const };
+  return model.startsWith("claude-haiku-4") ? undefined : { effort: "medium" as const };
 }
 
 // The model that last succeeded — tried first on subsequent calls so the
